@@ -76,3 +76,91 @@ See .env.example for the full list and how to obtain them.
 ## Notes
 - CORS is permissive for development; tighten before production.
 - Scheduler (APScheduler) runs in-process; for production, use a single instance or external scheduling to avoid duplicate sends.
+
+## API Quickstart (curl/HTTPie)
+Replace AUTH with a valid Firebase ID token: export AUTH="Bearer eyJhbGciOi..."
+
+- Health
+  curl -s http://localhost:3001/
+  http :3001/
+
+- Events
+  # List
+  curl -s -H "Authorization: $AUTH" "http://localhost:3001/events?limit=10&offset=0"
+  http GET :3001/events "Authorization:$AUTH"
+
+  # Create
+  curl -s -X POST -H "Authorization: $AUTH" -H "Content-Type: application/json" \
+    -d '{"title":"Meeting","start_time":"2025-01-01T10:00:00Z","end_time":"2025-01-01T11:00:00Z","attendees":["uid2"],"reminder_minutes_before":30}' \
+    http://localhost:3001/events
+  http POST :3001/events "Authorization:$AUTH" title=Meeting start_time=2025-01-01T10:00:00Z end_time=2025-01-01T11:00:00Z attendees:='["uid2"]' reminder_minutes_before:=30
+
+  # Get
+  curl -s -H "Authorization: $AUTH" http://localhost:3001/events/evt123
+  http GET :3001/events/evt123 "Authorization:$AUTH"
+
+  # Update
+  curl -s -X PATCH -H "Authorization: $AUTH" -H "Content-Type: application/json" -d '{"title":"Updated"}' http://localhost:3001/events/evt123
+  http PATCH :3001/events/evt123 "Authorization:$AUTH" title=Updated
+
+  # Delete
+  curl -s -X DELETE -H "Authorization: $AUTH" http://localhost:3001/events/evt123
+  http DELETE :3001/events/evt123 "Authorization:$AUTH"
+
+- Birthdays
+  # List
+  curl -s -H "Authorization: $AUTH" "http://localhost:3001/birthdays?limit=10&offset=0"
+  http GET :3001/birthdays "Authorization:$AUTH"
+
+  # Create
+  curl -s -X POST -H "Authorization: $AUTH" -H "Content-Type: application/json" \
+    -d '{"name":"Alice","date":"2025-01-01T00:00:00Z","note":"Friend","reminder_days_before":3}' \
+    http://localhost:3001/birthdays
+  http POST :3001/birthdays "Authorization:$AUTH" name=Alice date=2025-01-01T00:00:00Z note=Friend reminder_days_before:=3
+
+  # Get
+  curl -s -H "Authorization: $AUTH" http://localhost:3001/birthdays/b123
+  http GET :3001/birthdays/b123 "Authorization:$AUTH"
+
+  # Update
+  curl -s -X PATCH -H "Authorization: $AUTH" -H "Content-Type: application/json" -d '{"note":"Best friend"}' http://localhost:3001/birthdays/b123
+  http PATCH :3001/birthdays/b123 "Authorization:$AUTH" note='Best friend'
+
+  # Delete
+  curl -s -X DELETE -H "Authorization: $AUTH" http://localhost:3001/birthdays/b123
+  http DELETE :3001/birthdays/b123 "Authorization:$AUTH"
+
+- Messages
+  # List threads
+  curl -s -H "Authorization: $AUTH" "http://localhost:3001/messages/threads?limit=10&offset=0"
+  http GET :3001/messages/threads "Authorization:$AUTH"
+
+  # List messages in a thread
+  curl -s -H "Authorization: $AUTH" "http://localhost:3001/messages/threads/t123/messages?limit=10&offset=0"
+  http GET :3001/messages/threads/t123/messages "Authorization:$AUTH"
+
+  # Send message
+  curl -s -X POST -H "Authorization: $AUTH" -H "Content-Type: application/json" -d '{"thread_id":"t123","content":"Hello"}' http://localhost:3001/messages/send
+  http POST :3001/messages/send "Authorization:$AUTH" thread_id=t123 content=Hello
+
+- Profiles
+  # Get my profile
+  curl -s -H "Authorization: $AUTH" http://localhost:3001/profiles/me
+  http GET :3001/profiles/me "Authorization:$AUTH"
+
+  # Update my profile
+  curl -s -X PATCH -H "Authorization: $AUTH" -H "Content-Type: application/json" -d '{"display_name":"New Name"}' http://localhost:3001/profiles/me
+  http PATCH :3001/profiles/me "Authorization:$AUTH" display_name='New Name'
+
+  # Register FCM token
+  curl -s -X POST -H "Authorization: $AUTH" "http://localhost:3001/profiles/me/fcm/register?token=abc123"
+  http POST :3001/profiles/me/fcm/register "Authorization:$AUTH" token=abc123
+
+  # Unregister FCM token
+  curl -s -X POST -H "Authorization: $AUTH" "http://localhost:3001/profiles/me/fcm/unregister?token=abc123"
+  http POST :3001/profiles/me/fcm/unregister "Authorization:$AUTH" token=abc123
+
+- Notifications
+  # Test notification
+  curl -s -H "Authorization: $AUTH" "http://localhost:3001/notifications/test?title=Hi&body=There"
+  http GET :3001/notifications/test "Authorization:$AUTH" title==Hi body==There
