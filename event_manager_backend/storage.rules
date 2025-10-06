@@ -1,0 +1,43 @@
+rules_version = '2';
+service firebase.storage {
+  // Storage layout assumptions:
+  // - profiles/{uid}/photo.jpg (or other extension) for profile pictures
+  // - attachments/{threadId}/{messageId}/{filename} for message attachments (optional future)
+  //
+  // Rules:
+  // - Users can read their own profile photo; public read is disabled by default.
+  // - Users can write only to their own profile namespace.
+  // - Basic content-type validation for images on profile photos.
+
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid is string && request.auth.uid.size() > 0;
+    }
+
+    function isImage() {
+      return request.resource != null
+        && request.resource.contentType != null
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Profile photos
+    match /profiles/{uid}/{fileName} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+
+      // Only owner can upload/overwrite/delete their photo; must be an image type.
+      allow write: if isSignedIn()
+        && request.auth.uid == uid
+        && isImage();
+    }
+
+    // Message attachments (locked by default; enable in future with proper thread membership checks via Firestore)
+    match /attachments/{threadId}/{messageId}/{fileName} {
+      allow read, write: if false;
+    }
+
+    // Fallback deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

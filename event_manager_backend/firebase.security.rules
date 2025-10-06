@@ -1,0 +1,122 @@
+rules_version = '2';
+service cloud.firestore {
+  // Security model assumptions:
+  // - Collections:
+  //    users/{uid}                 -> profile document for each user
+  //    events/{eventId}            -> event documents with owner_uid and attendees array
+  //    birthdays/{birthdayId}      -> birthday docs with owner_uid
+  //    threads/{threadId}          -> message threads with participants array
+  //    threads/{threadId}/messages/{messageId} -> messages with sender_uid
+  //
+  // - Authentication: Firebase Auth used; request.auth.uid available when signed-in.
+  //
+  // - Write validations enforce basic types where possible and ownership/participation.
+
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid is string && request.auth.uid.size() > 0;
+    }
+
+    function isOwner(resourceData) {
+      return isSignedIn() && resourceData.owner_uid == request.auth.uid;
+    }
+
+    function isParticipant(resourceData) {
+      return isSignedIn() && resourceData.participants != null && request.auth.uid in resourceData.participants;
+    }
+
+    // Validate timestamp monotonic updates (when updated_at exists, it should not go backwards)
+    function validTimestamps(newData, oldData) {
+      return !('updated_at' in newData) || oldData == null || !(oldData.updated_at is timestamp) || newData.updated_at >= oldData.updated_at;
+    }
+
+    // Basic type checks for common fields used by app
+    function hasString(field) { return field is string && field.size() > 0; }
+    function isOptionalString(field) { return !(field is string) || field.size() >= 0; }
+    function isStringArray(arr) {
+      return arr is list && arr.size() >= 0 && arr.hasOnly([ 'string' ]);
+    }
+
+    // USERS: allow user to read/write own profile; others can read public subset
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid);
+      // Optional: expose limited public read, e.g., display_name and photo_url via Cloud Function/Backend only.
+      // Disallow direct public reads for privacy by default.
+
+      allow create: if isSignedIn() && request.auth.uid == uid;
+      allow update, delete: if isSignedIn() && request.auth.uid == uid && validTimestamps(request.resource.data, resource.data);
+
+      // Validate writes
+      allow write: if false; // fallback; explicit create/update rules above
+    }
+
+    // EVENTS: owner full control; attendees can read; owner controls writes
+    match /events/{eventId} {
+      allow read: if isOwner(resource.data) || (isSignedIn() && resource.data.attendees is list && request.auth.uid in resource.data.attendees);
+
+      allow create: if isSignedIn()
+        && request.resource.data.owner_uid == request.auth.uid
+        && hasString(request.resource.data.title)
+        && request.resource.data.start_time is timestamp
+        && (!('end_time' in request.resource.data) || request.resource.data.end_time is timestamp)
+        && (!('attendees' in request.resource.data) || isStringArray(request.resource.data.attendees))
+        && (!('reminder_minutes_before' in request.resource.data) || request.resource.data.reminder_minutes_before is int)
+        && validTimestamps(request.resource.data, null);
+
+      allow update: if isOwner(resource.data)
+        && validTimestamps(request.resource.data, resource.data);
+
+      allow delete: if isOwner(resource.data);
+    }
+
+    // BIRTHDAYS: owner only
+    match /birthdays/{birthdayId} {
+      allow read, update, delete: if isOwner(resource.data) && validTimestamps(request.resource.data, resource.data);
+      allow create: if isSignedIn()
+        && request.resource.data.owner_uid == request.auth.uid
+        && hasString(request.resource.data.name)
+        && request.resource.data.date is timestamp
+        && (!('reminder_days_before' in request.resource.data) || request.resource.data.reminder_days_before is int)
+        && validTimestamps(request.resource.data, null);
+    }
+
+    // THREADS: participants can read; only participants can write limited fields
+    match /threads/{threadId} {
+      allow read: if isParticipant(resource.data);
+
+      // Create: initiator must include themselves in participants
+      allow create: if isSignedIn()
+        && request.resource.data.participants is list
+        && request.auth.uid in request.resource.data.participants
+        && isStringArray(request.resource.data.participants)
+        && validTimestamps(request.resource.data, null);
+
+      // Update: only participants; do not allow arbitrary changes like adding participants by non-backend.
+      // For mobile client, lock participants after creation to avoid escalation.
+      allow update: if isParticipant(resource.data)
+        && request.resource.data.participants == resource.data.participants
+        && validTimestamps(request.resource.data, resource.data);
+
+      allow delete: if false; // Deletions should be backend-admin only, if ever.
+
+      // Messages subcollection: readable by thread participants; create by signed-in who is a participant; sender_uid must match caller
+      match /messages/{messageId} {
+        allow read: if isParticipant(get(/databases/$(database)/documents/threads/$(threadId)).data);
+
+        allow create: if isSignedIn()
+          && isParticipant(get(/databases/$(database)/documents/threads/$(threadId)).data)
+          && request.resource.data.sender_uid == request.auth.uid
+          && hasString(request.resource.data.content)
+          && request.resource.data.sent_at is timestamp;
+
+        // Disallow updates/deletes to preserve message integrity; consider soft delete via flags
+        allow update, delete: if false;
+      }
+    }
+
+    // Fallback: deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

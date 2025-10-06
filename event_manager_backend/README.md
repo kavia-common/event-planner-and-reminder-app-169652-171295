@@ -17,31 +17,58 @@ This backend powers the Event Planner and Reminder App. It integrates with Fireb
   - Firestore (Native mode)
   - Cloud Storage bucket
   - Cloud Messaging enabled
+- Firebase CLI installed (https://firebase.google.com/docs/cli)
 
 ## Setup
 1. Create and activate virtual environment
-2. Install dependencies
+2. Install dependencies  
    pip install -r requirements.txt
-
 3. Create a .env file in this directory based on .env.example and fill values from your Firebase Console.
 
 Notes:
-- FIREBASE_PRIVATE_KEY must be stored with escaped newlines (\n) when placed into .env.
+- FIREBASE_PRIVATE_KEY must be stored with escaped newlines (\\n) when placed into .env.
 
 ## Run (development)
-- Start the API:
+- Start the API:  
   uvicorn src.api.main:app --host 0.0.0.0 --port 3001 --reload
 
-- Visit:
+- Visit:  
   http://localhost:3001/docs
 
 ## OpenAPI
-To regenerate interfaces/openapi.json locally:
+To regenerate interfaces/openapi.json locally:  
   python -m src.api.generate_openapi
 
 ## Security and Rules
-- Enforce Firestore and Storage security with Firebase rules.
-- Deploy rules using Firebase CLI (not covered here). Ensure backend access aligns with mobile client security posture.
+We ship least-privilege Firestore and Storage rules alongside the backend. Review and deploy them using Firebase CLI.
+
+Rules files (paths relative to this directory):
+- Firestore rules: firebase.security.rules
+- Storage rules: storage.rules
+
+### Set Firebase project
+If you have multiple projects, select the target project:
+  firebase use <your-project-id>
+
+Or set the project explicitly per command:
+  firebase --project <your-project-id> <command>
+
+### Deploy rules
+Deploy Firestore rules:
+  firebase deploy --only firestore:rules
+
+Deploy Storage rules:
+  firebase deploy --only storage:rules
+
+If your firebase.json uses custom paths, make sure it points to:
+- firestore.rules: "event_manager_backend/firebase.security.rules"
+- storage.rules: "event_manager_backend/storage.rules"
+
+Example firebase.json snippet at repo root:
+{
+  "firestore": { "rules": "event_manager_backend/firebase.security.rules" },
+  "storage": { "rules": "event_manager_backend/storage.rules" }
+}
 
 ## Environment Variables
 See .env.example for the full list and how to obtain them.
